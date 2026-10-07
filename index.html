@@ -217,19 +217,12 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
         <span>
           📋 Ler Folha com IA
-          <span class="btn-camera-sub">Foto da folha física → preenchimento automático</span>
+          <span class="btn-camera-sub">Foto ou PDF da folha → preenchimento automático</span>
         </span>
       </button>
-      <input type="file" id="file-input" accept="image/*" capture="environment" style="display:none" onchange="lerFotoIA(this)">
+      <input type="file" id="file-input" accept="image/*,application/pdf" style="display:none" onchange="lerFotoIA(this)">
 
-      <button class="btn-camera-tm" id="btn-tm" onclick="document.getElementById('file-tm').click()">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-        <span>
-          🔍 Conferir foto Timemark
-          <span class="btn-camera-tm-sub">Foto do equipamento → confere com a folha atual</span>
-        </span>
-      </button>
-      <input type="file" id="file-tm" accept="image/*" capture="environment" style="display:none" onchange="lerFotoTimemark(this)">
+
 
       <button class="btn-camera-pdf" onclick="document.getElementById('file-pdf').click()">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
@@ -289,6 +282,10 @@
     <button class="btn-add" onclick="addRow()">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="8" y1="3" x2="8" y2="13"/><line x1="3" y1="8" x2="13" y2="8"/></svg>
       Adicionar equipamento
+    </button>
+    <button class="btn-add" style="border-color:rgba(184,50,50,.4);color:#F5A0A0;margin-top:4px" onclick="limparItens()">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+      Limpar itens
     </button>
     <div class="count-badge" id="count-label">0 itens na folha</div>
   </div>
@@ -655,13 +652,12 @@ async function lerFotoIA(input) {
   if (!file) return;
   input.value = '';
 
-  // Mostrar loading
   document.getElementById('ia-loading').classList.add('show');
 
   try {
-    // Converter imagem para base64
-    const base64 = await fileToBase64(file);
-    const mediaType = file.type || 'image/jpeg';
+    const base64    = await fileToBase64(file);
+    const isPDF     = file.type === 'application/pdf' || file.name?.endsWith('.pdf');
+    const mediaType = isPDF ? 'application/pdf' : (file.type || 'image/jpeg');
 
     // Chamar API Anthropic
     const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -673,7 +669,10 @@ async function lerFotoIA(input) {
         messages: [{
           role: 'user',
           content: [
-            {
+            isPDF ? {
+              type: 'document',
+              source: { type: 'base64', media_type: 'application/pdf', data: base64 }
+            } : {
               type: 'image',
               source: { type: 'base64', media_type: mediaType, data: base64 }
             },
@@ -798,7 +797,7 @@ function aplicarIA() {
   const nf       = document.getElementById('ia-nf').value.trim();
 
   if (nfolha)  { document.getElementById('nfolha').value  = nfolha; document.getElementById('nfolha-auto-indicator').style.display='none'; }
-  if (data)      document.getElementById('fdata').value    = data;
+  
   if (empresa)   document.getElementById('empresa').value  = empresa;
   if (contrato)  document.getElementById('contrato').value = contrato;
   if (cidade)    document.getElementById('cidade').value   = cidade;
@@ -1159,13 +1158,13 @@ function salvarHistoricoLS(hist) {
 
 function salvarRegistro() {
   const nf   = document.getElementById('nfolha').value.trim()   || '—';
-  const dt   = document.getElementById('fdata').value           || '—';
+  const dt   = document.getElementById('fdata').value           || '';
+  const dtFolhaFmt = dt ? dt.split('-').reverse().join('/') : '';
   const emp  = document.getElementById('empresa').value.trim()  || '—';
   const ctto = document.getElementById('contrato').value.trim() || '—';
   const cid  = document.getElementById('cidade').value.trim()   || '—';
   const nfVal      = document.getElementById('nf').value.trim()            || '';
   const obsG       = document.getElementById('obs-geral').value.trim();
-  const dtFmt      = dt ? dt.split('-').reverse().join('/') : dt;
   const dtEntrega  = document.getElementById('f-data-entrega').value;
   const dtInicio   = document.getElementById('f-data-inicio').value;
   const dtDevolucao= document.getElementById('f-data-devolucao').value;
@@ -1195,7 +1194,7 @@ function salvarRegistro() {
 
   registros.forEach(r=>{
     hist.push({pat:r.pat,eq:r.eq,leg:r.leg,obs:r.obs,obsGeral:obsG,
-      saiu:r.saiu,entrou:r.entrou,folha:nf,data:dtFmt,nf:nfVal,
+      saiu:r.saiu,entrou:r.entrou,folha:nf,data:dtFolhaFmt||dtEntregaFmt||dtInicioFmt||'—',nf:nfVal,
       empresa:emp,contrato:ctto,cidade:cid,
       dtEntrega:dtEntregaFmt,dtInicio:dtInicioFmt,dtDevolucao:dtDevolucaoFmt,
       ts:Date.now()});
@@ -1203,7 +1202,7 @@ function salvarRegistro() {
   salvarHistoricoLS(hist);
 
   const histRm = JSON.parse(localStorage.getItem('hist_rm')||'[]');
-  registros.forEach(r=>{ if(r.leg==='RM') histRm.push({pat:r.pat,eq:r.eq,leg:'RM',folha:nf,data:dtFmt}); });
+  registros.forEach(r=>{ if(r.leg==='RM') histRm.push({pat:r.pat,eq:r.eq,leg:'RM',folha:nf,data:dtFolhaFmt||dtEntregaFmt||dtInicioFmt||'—'}); });
   try { localStorage.setItem('hist_rm', JSON.stringify(histRm.slice(-300))); } catch(e) {}
 
   toast(`Folha ${nf} salva! ${registros.length} item(ns) ✓`);
@@ -1215,11 +1214,11 @@ function abrirNovaFolha() {
   rowCount=0; atualizar();
   document.getElementById('nf').value='';
   document.getElementById('obs-geral').value='';
+  document.getElementById('fdata').value=new Date().toISOString().split('T')[0];
   document.getElementById('f-data-entrega').value='';
   document.getElementById('f-data-inicio').value='';
   document.getElementById('f-data-devolucao').value='';
 
-  document.getElementById('fdata').value=new Date().toISOString().split('T')[0];
   prepararNovaFolha();
   window.scrollTo({top:0,behavior:'smooth'});
   toast('Nova folha pronta ✓');
@@ -1227,14 +1226,15 @@ function abrirNovaFolha() {
 
 // ── WHATSAPP ──────────────────────────────────────────────────────────────────
 function gerarWhatsapp() {
-  const nf     = document.getElementById('nfolha').value   || '—';
-  const dt     = document.getElementById('fdata').value;
-  const emp    = document.getElementById('empresa').value  || '—';
-  const ctto   = document.getElementById('contrato').value || '—';
-  const cid    = document.getElementById('cidade').value   || '—';
+  const nf     = document.getElementById('nfolha').value.trim();
+  const emp    = document.getElementById('empresa').value.trim();
+  const ctto   = document.getElementById('contrato').value.trim();
+  const cid    = document.getElementById('cidade').value.trim();
   const nf_val = document.getElementById('nf').value.trim();
   const obsG   = document.getElementById('obs-geral').value.trim();
-  const dtFmt  = dt ? dt.split('-').reverse().join('/') : '—';
+  const _dtEnt = document.getElementById('f-data-entrega').value;
+  const _dtIni = document.getElementById('f-data-inicio').value;
+  const _dtDev = document.getElementById('f-data-devolucao').value;
 
   const rows = document.querySelectorAll('#eq-rows .eq-item');
   const itens=[];
@@ -1254,11 +1254,13 @@ function gerarWhatsapp() {
   const grupos={};const ordem=[];
   itens.forEach(i=>{if(!grupos[i.leg]){grupos[i.leg]=[];ordem.push(i.leg);}grupos[i.leg].push(i);});
 
-  let msg=`*FOLHA: ${nf}*\nData: ${dtFmt}\nEmpresa: ${emp}\nContrato: ${ctto}\nLocal: ${cid}\n`;
+  const _dtFolha = document.getElementById('fdata').value;
+  let msg=`*FOLHA: ${nf||'—'}*\n`;
+  if(_dtFolha) msg+=`Data: ${_dtFolha.split('-').reverse().join('/')}\n`;
+  if(emp)    msg+=`Empresa: ${emp}\n`;
+  if(ctto)   msg+=`Contrato: ${ctto}\n`;
+  if(cid)    msg+=`Local: ${cid}\n`;
   if(nf_val) msg+=`NF: ${nf_val}\n`;
-  const _dtEnt = document.getElementById('f-data-entrega').value;
-  const _dtIni = document.getElementById('f-data-inicio').value;
-  const _dtDev = document.getElementById('f-data-devolucao').value;
   if(_dtEnt) msg+=`Entrega: ${_dtEnt.split('-').reverse().join('/')}\n`;
   if(_dtIni) msg+=`Início locação: ${_dtIni.split('-').reverse().join('/')}\n`;
   if(_dtDev) msg+=`Devolução: ${_dtDev.split('-').reverse().join('/')}\n`;
@@ -1372,6 +1374,11 @@ function salvarEdicao(){
 function apagarRegistro(idx){
   if(!confirm('Apagar este registro do histórico?'))return;
   const hist=getHistorico();hist.splice(idx,1);salvarHistoricoLS(hist);toast('Registro apagado ✓');mostrarTodos();
+}
+function limparItens(){
+  if(confirm('Limpar todos os equipamentos?')){
+    document.getElementById('eq-rows').innerHTML='';rowCount=0;atualizar();toast('Itens limpos ✓');
+  }
 }
 function confirmarLimpar(){
   if(confirm('Limpar todos os itens da folha?')){document.getElementById('eq-rows').innerHTML='';rowCount=0;atualizar();toast('Folha limpa ✓');}
