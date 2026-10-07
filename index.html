@@ -369,6 +369,34 @@
   </div>
 </div>
 
+<!-- Modal Tipo NF -->
+<div class="modal-bg" id="modal-tipo-nf">
+  <div class="modal-box">
+    <h3>📄 Tipo da Nota Fiscal</h3>
+    <p class="sub">Qual é a operação desta NF?</p>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
+      <button class="btn" style="background:rgba(184,50,50,.2);border:1.5px solid rgba(224,80,80,.5);color:#F5A0A0;height:52px;font-size:14px" onclick="confirmarTipoNF('L')">
+        → Nova Locação
+      </button>
+      <button class="btn" style="background:rgba(14,122,78,.2);border:1.5px solid rgba(24,169,106,.5);color:#7AF5C0;height:52px;font-size:14px" onclick="confirmarTipoNF('D')">
+        ← Devolução de Locação
+      </button>
+      <button class="btn" style="background:rgba(184,50,50,.15);border:1.5px solid rgba(224,80,80,.4);color:#F5A0A0;height:52px;font-size:14px" onclick="confirmarTipoNF('RM')">
+        → Retirada p/ Manutenção
+      </button>
+      <button class="btn" style="background:rgba(14,122,78,.15);border:1.5px solid rgba(24,169,106,.4);color:#7AF5C0;height:52px;font-size:14px" onclick="confirmarTipoNF('DM')">
+        ← Devolução de Manutenção
+      </button>
+      <button class="btn" style="background:rgba(91,61,184,.2);border:1.5px solid rgba(139,111,232,.5);color:#C3AFF5;height:52px;font-size:14px" onclick="confirmarTipoNF('S')">
+        ⇄ Substituição
+      </button>
+    </div>
+    <div class="modal-footer" style="margin-top:14px">
+      <button class="btn" style="background:var(--bg3);color:var(--text2);border:1px solid var(--border);flex:1" onclick="fecharModal('modal-tipo-nf')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Conferência Timemark -->
 <div class="modal-bg" id="modal-tm">
   <div class="modal-box">
@@ -799,7 +827,31 @@ function aplicarIA() {
 // ══════════════════════════════════════════════════════════════════════════════
 // LEITURA PDF — NOTA FISCAL
 // ══════════════════════════════════════════════════════════════════════════════
+let _tipoNF    = 'L';
+let _pdfPendente = null;
+
+// Intercepta o input — abre modal de tipo antes de processar
+document.getElementById('file-pdf').addEventListener('change', function() {
+  if (!this.files[0]) return;
+  _pdfPendente = this.files[0];
+  this.value = '';
+  document.getElementById('modal-tipo-nf').classList.add('open');
+});
+
+function confirmarTipoNF(tipo) {
+  _tipoNF = tipo;
+  fecharModal('modal-tipo-nf');
+  if (_pdfPendente) {
+    processarPdfNF(_pdfPendente);
+    _pdfPendente = null;
+  }
+}
+
 async function lerPdfNF(input) {
+  // mantido por compatibilidade — não usado diretamente
+}
+
+async function processarPdfNF(file) {
   const file = input.files[0];
   if (!file) return;
   input.value = '';
@@ -837,7 +889,7 @@ Formato exato:
   "equipamentos": [
     {
       "descricao": "descrição do item conforme consta na nota",
-      "patrimonio": "número do patrimônio se aparecer, senão vazio"
+      "patrimonios": ["lista", "de", "todos", "os", "patrimônios", "separados — extraia TODOS os números N que aparecerem na descrição do item, ex: N 662;670;671 vira [662,670,671]"]
     }
   ],
   "obs": "informações relevantes como local de entrega, prazo ou observações do corpo da nota"
@@ -859,7 +911,7 @@ Formato exato:
     }
 
     document.getElementById('ia-loading').classList.remove('show');
-    mostrarConfirmacaoNF(resultado);
+    mostrarConfirmacaoNF(resultado, _tipoNF);
 
   } catch(err) {
     document.getElementById('ia-loading').classList.remove('show');
@@ -867,24 +919,58 @@ Formato exato:
   }
 }
 
-function mostrarConfirmacaoNF(dados) {
-  // Preencher campos que a NF fornece
-  if (dados.numero_nf)      document.getElementById('nf').value       = dados.numero_nf;
-  if (dados.tomador)        document.getElementById('empresa').value   = dados.tomador;
-  if (dados.local) document.getElementById('cidade').value    = dados.local;
-  if (dados.contrato)       document.getElementById('contrato').value  = dados.contrato;
-
+function mostrarConfirmacaoNF(dados, legenda) {
+  legenda = legenda || 'L';
+  // Cabeçalho
+  if (dados.numero_nf) document.getElementById('nf').value      = dados.numero_nf;
+  if (dados.tomador)   document.getElementById('empresa').value  = dados.tomador;
+  if (dados.local)     document.getElementById('cidade').value   = dados.local;
+  if (dados.contrato)  document.getElementById('contrato').value = dados.contrato;
+  if (dados.obs && !document.getElementById('obs-geral').value)
+    document.getElementById('obs-geral').value = dados.obs;
   atualizarHeaderSub();
 
-  const itens = dados.equipamentos?.length || 0;
-  let msg = `NF ${dados.numero_nf||'—'} · ${dados.tomador||'—'}`;
-  if (itens) msg += ` · ${itens} item(ns)`;
-  toast(`📄 NF aplicada: ${msg} ✓`);
-
-  // Se tiver obs da NF, colocar no campo obs geral (se estiver vazio)
-  if (dados.obs && !document.getElementById('obs-geral').value) {
-    document.getElementById('obs-geral').value = dados.obs;
+  // Mapeamento descrição NF → equipamento do sistema
+  function mapearEq(desc) {
+    const d = desc.toUpperCase();
+    if (d.includes('JACKSON'))                                              return 'GERADOR JACKSON';
+    if (d.includes('GERADOR'))                                              return 'GERADOR DE ENERGIA BRANCO';
+    if (d.includes('POLICORTE'))                                            return 'POLICORTE';
+    if (d.includes('SOC') || d.includes('PÉ DE PATO') || d.includes('MANUAL 220') || d.includes('SOC.MANUAL')) return 'PÉ DE PATO (SOCADOR MANUAL)';
+    if (d.includes('FURADEIRA') && d.includes('TRILHO'))                    return 'FURADEIRA TRILHO VÍDEA';
+    if (d.includes('FURADEIRA') && d.includes('PORTÁTIL'))                  return 'FURADEIRA DORMENTE PORTÁTIL';
+    if (d.includes('FURADEIRA'))                                            return 'FURADEIRA DORMENTE PT8';
+    if (d.includes('ESMERILHADEIRA') && (d.includes('MP12') || d.includes('12'))) return 'ESMERILHADEIRA ELÉTRICA MP12';
+    if (d.includes('ESMERILHADEIRA'))                                       return 'ESMERILHADEIRA ELÉTRICA MP5';
+    if (d.includes('REBARBADORA'))                                          return 'REBARBADORA';
+    if (d.includes('TIREFONADORA') && d.includes('PORTÁTIL'))               return 'TIREFONADORA PORTÁTIL';
+    if (d.includes('TIREFONADORA'))                                         return 'TIREFONADORA TS2';
+    if (d.includes('CARRINHO'))                                             return 'CARRINHO C/ SUPORTE';
+    if (d.includes('MACACO') && d.includes('HID'))                         return 'MACACO HIDRÁULICO';
+    if (d.includes('MACACO'))                                               return 'MACACO MECÂNICO';
+    if (d.includes('CONJUNTO') || d.includes('AUTOPORTANTE'))              return 'CONJUNTO AUTOPORTANTE';
+    return '';
   }
+
+  // Adicionar uma linha por patrimônio
+  let linhas = 0;
+  (dados.equipamentos || []).forEach(item => {
+    const eqNome = mapearEq(item.descricao || '');
+    if (!eqNome) return; // ignora gabaritos e itens não mapeados
+    const pats = item.patrimonios && item.patrimonios.length
+      ? item.patrimonios
+      : item.patrimonio ? [item.patrimonio] : [''];
+    pats.forEach(pat => {
+      addRow({ eq: eqNome, pat: String(pat).trim(), leg: legenda });
+      linhas++;
+    });
+  });
+
+  atualizar();
+
+  let msg = `NF ${dados.numero_nf||'—'} · ${dados.tomador||'—'}`;
+  if (linhas) msg += ` · ${linhas} equipamento(s)`;
+  toast(`📄 NF aplicada: ${msg} ✓`);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
