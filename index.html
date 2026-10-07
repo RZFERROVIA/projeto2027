@@ -238,7 +238,7 @@
           <span class="btn-camera-pdf-sub">Extrai nº NF, empresa e local automaticamente</span>
         </span>
       </button>
-      <input type="file" id="file-pdf" accept="application/pdf" style="display:none" onchange="lerPdfNF(this)">
+      <input type="file" id="file-pdf" accept="application/pdf" style="display:none">
     </div>
 
     <!-- LOADING IA -->
@@ -831,12 +831,16 @@ let _tipoNF    = 'L';
 let _pdfPendente = null;
 
 // Intercepta o input — abre modal de tipo antes de processar
-document.getElementById('file-pdf').addEventListener('change', function() {
-  if (!this.files[0]) return;
-  _pdfPendente = this.files[0];
-  this.value = '';
-  document.getElementById('modal-tipo-nf').classList.add('open');
-});
+function initPdfListener() {
+  document.getElementById('file-pdf').addEventListener('change', function() {
+    if (!this.files[0]) return;
+    _pdfPendente = this.files[0];
+    this.value = '';
+    document.getElementById('modal-tipo-nf').classList.add('open');
+  });
+}
+// Chama imediatamente pois o script roda após o DOM
+initPdfListener();
 
 function confirmarTipoNF(tipo) {
   _tipoNF = tipo;
@@ -852,10 +856,7 @@ async function lerPdfNF(input) {
 }
 
 async function processarPdfNF(file) {
-  const file = input.files[0];
   if (!file) return;
-  input.value = '';
-
   document.getElementById('ia-loading').classList.add('show');
 
   try {
@@ -952,18 +953,23 @@ function mostrarConfirmacaoNF(dados, legenda) {
     return '';
   }
 
-  // Adicionar uma linha por patrimônio
-  let linhas = 0;
+  // Agrupar por equipamento — patrimônios separados por ;
+  const grupos = {};
   (dados.equipamentos || []).forEach(item => {
     const eqNome = mapearEq(item.descricao || '');
-    if (!eqNome) return; // ignora gabaritos e itens não mapeados
+    if (!eqNome) return;
     const pats = item.patrimonios && item.patrimonios.length
       ? item.patrimonios
-      : item.patrimonio ? [item.patrimonio] : [''];
-    pats.forEach(pat => {
-      addRow({ eq: eqNome, pat: String(pat).trim(), leg: legenda });
-      linhas++;
-    });
+      : item.patrimonio ? [item.patrimonio] : [];
+    if (!grupos[eqNome]) grupos[eqNome] = [];
+    pats.forEach(p => { const v = String(p).trim(); if (v) grupos[eqNome].push(v); });
+  });
+
+  let linhas = 0;
+  Object.entries(grupos).forEach(([eqNome, pats]) => {
+    const patStr = pats.length ? pats.join(' ; ') : '';
+    addRow({ eq: eqNome, pat: patStr, leg: legenda });
+    linhas++;
   });
 
   atualizar();
